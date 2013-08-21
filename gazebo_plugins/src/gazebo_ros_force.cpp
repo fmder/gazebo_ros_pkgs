@@ -1,32 +1,24 @@
+/*
+ * Copyright 2013 Open Source Robotics Foundation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+*/
 
 /*
- *  Gazebo - Outdoor Multi-Robot Simulator
- *  Copyright (C) 2003
- *     Nate Koenig & Andrew Howard
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
- *
- */
-/*
- @mainpage
    Desc: GazeboRosForce plugin for manipulating objects in Gazebo
    Author: John Hsu
    Date: 24 Sept 2008
-   SVN info: $Id$
- @htmlinclude manifest.html
- @b GazeboRosForce plugin reads ROS geometry_msgs/Wrench messages
  */
 
 #include <algorithm>
@@ -36,6 +28,7 @@
 
 namespace gazebo
 {
+GZ_REGISTER_MODEL_PLUGIN(GazeboRosForce);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Constructor
@@ -74,7 +67,7 @@ void GazeboRosForce::Load(physics::ModelPtr _model, sdf::ElementPtr _sdf)
   // load parameters
   this->robot_namespace_ = "";
   if (_sdf->HasElement("robotNamespace"))
-    this->robot_namespace_ = _sdf->GetElement("robotNamespace")->GetValueString() + "/";
+    this->robot_namespace_ = _sdf->GetElement("robotNamespace")->Get<std::string>() + "/";
 
   if (!_sdf->HasElement("bodyName"))
   {
@@ -82,7 +75,7 @@ void GazeboRosForce::Load(physics::ModelPtr _model, sdf::ElementPtr _sdf)
     return;
   }
   else
-    this->link_name_ = _sdf->GetElement("bodyName")->GetValueString();
+    this->link_name_ = _sdf->GetElement("bodyName")->Get<std::string>();
 
   this->link_ = _model->GetLink(this->link_name_);
   if (!this->link_)
@@ -97,13 +90,14 @@ void GazeboRosForce::Load(physics::ModelPtr _model, sdf::ElementPtr _sdf)
     return;
   }
   else
-    this->topic_name_ = _sdf->GetElement("topicName")->GetValueString();
+    this->topic_name_ = _sdf->GetElement("topicName")->Get<std::string>();
 
 
-  // initialize ros if not done so already
+  // Make sure the ROS node for Gazebo has already been initialized
   if (!ros::isInitialized())
   {
-    ROS_FATAL("while loading gazebo_ros_force plugin, ros is not initialized, please load a gazebo system plugin that initializes ros (e.g. libgazebo_ros_api_plugin.so from gazebo ros package)\n");
+    ROS_FATAL_STREAM("A ROS node for Gazebo has not been initialized, unable to load plugin. "
+      << "Load the Gazebo system plugin 'libgazebo_ros_api_plugin.so' in the gazebo_ros package)");
     return;
   }
 
@@ -162,7 +156,5 @@ void GazeboRosForce::QueueThread()
     this->queue_.callAvailable(ros::WallDuration(timeout));
   }
 }
-
-GZ_REGISTER_MODEL_PLUGIN(GazeboRosForce);
 
 }

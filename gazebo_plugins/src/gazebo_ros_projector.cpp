@@ -1,11 +1,24 @@
 /*
- @mainpage
+ * Copyright 2013 Open Source Robotics Foundation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+*/
+
+/*
    Desc: GazeboRosTextureProjector plugin that controls texture projection
    Author: Jared Duke
    Date: 17 Jun 2010
-   SVN info: $Id$
- @htmlinclude manifest.html
- @b GazeboRosTextureProjector plugin that controls texture projection
  */
 
 #include <algorithm>
@@ -13,14 +26,14 @@
 #include <utility>
 #include <sstream>
 
-#include "rendering/Rendering.hh"
-#include "rendering/Scene.hh"
-#include "rendering/Visual.hh"
-#include "rendering/RTShaderSystem.hh"
+#include <gazebo/rendering/Rendering.hh>
+#include <gazebo/rendering/Scene.hh>
+#include <gazebo/rendering/Visual.hh>
+#include <gazebo/rendering/RTShaderSystem.hh>
 #include <gazebo_plugins/gazebo_ros_projector.h>
 
-#include "std_msgs/String.h"
-#include "std_msgs/Int32.h"
+#include <std_msgs/String.h>
+#include <std_msgs/Int32.h>
 
 #include <Ogre.h>
 #include <OgreMath.h>
@@ -30,6 +43,7 @@
 
 namespace gazebo
 {
+GZ_REGISTER_MODEL_PLUGIN(GazeboRosProjector);
 
 typedef std::map<std::string,Ogre::Pass*> OgrePassMap;
 typedef OgrePassMap::iterator OgrePassMapIterator;
@@ -71,7 +85,7 @@ void GazeboRosProjector::Load( physics::ModelPtr _parent, sdf::ElementPtr _sdf )
   this->node_->Init(this->world_->GetName());
   // Setting projector topic
   std::string name = std::string("~/") + _parent->GetName() + "/" +
-                      _sdf->GetValueString("projector");
+                      _sdf->Get<std::string>("projector");
   // Create a publisher on the ~/physics topic
   this->projector_pub_ = node_->Advertise<msgs::Projector>(name);
 
@@ -80,23 +94,24 @@ void GazeboRosProjector::Load( physics::ModelPtr _parent, sdf::ElementPtr _sdf )
   // load parameters
   this->robot_namespace_ = "";
   if (_sdf->HasElement("robotNamespace"))
-    this->robot_namespace_ = _sdf->GetElement("robotNamespace")->GetValueString() + "/";
+    this->robot_namespace_ = _sdf->GetElement("robotNamespace")->Get<std::string>() + "/";
 
   this->texture_topic_name_ = "";
   if (_sdf->HasElement("textureTopicName"))
-    this->texture_topic_name_ = _sdf->GetElement("textureTopicName")->GetValueString();
+    this->texture_topic_name_ = _sdf->GetElement("textureTopicName")->Get<std::string>();
 
   this->projector_topic_name_ = "";
   if (_sdf->HasElement("projectorTopicName"))
-    this->projector_topic_name_ = _sdf->GetElement("projectorTopicName")->GetValueString();
+    this->projector_topic_name_ = _sdf->GetElement("projectorTopicName")->Get<std::string>();
 
-  // initialize ros
+  // Make sure the ROS node for Gazebo has already been initialized
   if (!ros::isInitialized())
   {
-    int argc = 0;
-    char** argv = NULL;
-    ros::init(argc,argv,"gazebo",ros::init_options::NoSigintHandler|ros::init_options::AnonymousName);
+    ROS_FATAL_STREAM("A ROS node for Gazebo has not been initialized, unable to load plugin. "
+      << "Load the Gazebo system plugin 'libgazebo_ros_api_plugin.so' in the gazebo_ros package)");
+    return;
   }
+
   
   this->rosnode_ = new ros::NodeHandle(this->robot_namespace_);
 
@@ -153,7 +168,5 @@ void GazeboRosProjector::QueueThread()
     this->queue_.callAvailable(ros::WallDuration(timeout));
   }
 }
-
-GZ_REGISTER_MODEL_PLUGIN(GazeboRosProjector);
 
 }

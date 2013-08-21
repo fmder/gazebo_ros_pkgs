@@ -1,6 +1,3 @@
-#ifndef __GAZEBO_ROS_API_PLUGIN_HH__
-#define __GAZEBO_ROS_API_PLUGIN_HH__
-
 /*
  *  Gazebo - Outdoor Multi-Robot Simulator
  *  Copyright (C) 2003
@@ -28,6 +25,9 @@
  * SVN: $Id: main.cc 8598 2010-03-22 21:59:24Z hsujohnhsu $
  */
 
+#ifndef __GAZEBO_ROS_API_PLUGIN_HH__
+#define __GAZEBO_ROS_API_PLUGIN_HH__
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
@@ -53,7 +53,7 @@
 #include <gazebo/common/Plugin.hh>
 #include <gazebo/transport/Node.hh>
 
-// ros
+// ROS
 #include <ros/ros.h>
 #include <ros/callback_queue.h>
 #include <ros/subscribe_options.h>
@@ -126,6 +126,9 @@ public:
 
   /// \brief Destructor
   ~GazeboRosApiPlugin();
+  
+  /// \bried Detect if sig-int shutdown signal is recieved
+  void shutdownSignal();
 
   /// \brief Gazebo-inherited load function
   /// 
@@ -156,8 +159,11 @@ public:
   /// \brief Function for inserting a URDF into Gazebo from ROS Service Call
   bool spawnURDFModel(gazebo_msgs::SpawnModel::Request &req,gazebo_msgs::SpawnModel::Response &res);
 
-  /// \brief Function for inserting a URDF into Gazebo from ROS Service Call
-  bool spawnGazeboModel(gazebo_msgs::SpawnModel::Request &req,gazebo_msgs::SpawnModel::Response &res);
+  /// \brief Function for inserting a URDF into Gazebo from ROS Service Call. Deprecated in ROS Hydro - replace with spawnURDFModel()
+  ROS_DEPRECATED bool spawnGazeboModel(gazebo_msgs::SpawnModel::Request &req,gazebo_msgs::SpawnModel::Response &res);
+
+  /// \brief Both SDFs and converted URDFs get sent to this function for further manipulation from a ROS Service call
+  bool spawnSDFModel(gazebo_msgs::SpawnModel::Request &req,gazebo_msgs::SpawnModel::Response &res);
 
   /// \brief delete model given name
   bool deleteModel(gazebo_msgs::DeleteModel::Request &req,gazebo_msgs::DeleteModel::Response &res);
@@ -254,14 +260,13 @@ private:
   /// \brief
   void stripXmlDeclaration(std::string &model_xml);
 
-  /// \brief
-  void updateSDFModelPose(TiXmlDocument &gazebo_model_xml, gazebo::math::Vector3 initial_xyz, gazebo::math::Quaternion initial_q);
+  /// \brief Update the model name and pose of the SDF file before sending to Gazebo
+  void updateSDFAttributes(TiXmlDocument &gazebo_model_xml, std::string model_name, 
+                           gazebo::math::Vector3 initial_xyz, gazebo::math::Quaternion initial_q);
 
-  /// \brief
-  void updateSDFName(TiXmlDocument &gazebo_model_xml, std::string model_name);
-
-  /// \brief
-  void updateURDFModelPose(TiXmlDocument &gazebo_model_xml, gazebo::math::Vector3 initial_xyz, gazebo::math::Quaternion initial_q);
+  /// \brief Update the model name and pose of the URDF file before sending to Gazebo
+  void updateURDFModelPose(TiXmlDocument &gazebo_model_xml, 
+                           gazebo::math::Vector3 initial_xyz, gazebo::math::Quaternion initial_q);
 
   /// \brief
   void updateURDFName(TiXmlDocument &gazebo_model_xml, std::string model_name);
@@ -270,7 +275,8 @@ private:
   void walkChildAddRobotNamespace(TiXmlNode* robot_xml);
 
   /// \brief
-  bool spawnAndConform(TiXmlDocument &gazebo_model_xml, std::string model_name, gazebo_msgs::SpawnModel::Response &res);
+  bool spawnAndConform(TiXmlDocument &gazebo_model_xml, std::string model_name, 
+                       gazebo_msgs::SpawnModel::Response &res);
 
   /// \brief helper function for applyBodyWrench
   ///        shift wrench from reference frame to target frame
@@ -278,23 +284,30 @@ private:
                        gazebo::math::Vector3 reference_force, gazebo::math::Vector3 reference_torque,
                        gazebo::math::Pose target_to_reference );
 
-  /// \brief Used for the dynamnic reconfigure callback function template
-  void physicsReconfigureCallback(gazebo::PhysicsConfig &config, uint32_t level);
+  /// \brief Used for the dynamic reconfigure callback function template
+  void physicsReconfigureCallback(gazebo_ros::PhysicsConfig &config, uint32_t level);
 
   /// \brief waits for the rest of Gazebo to be ready before initializing the dynamic reconfigure services
   void physicsReconfigureThread();
 
-  /// \brief Unusd
+  /// \brief Unused
   void onResponse(ConstResponsePtr &response);
 
-  /// \brief utilites for checking incoming string URDF/SDF/Param
+  /// \brief utility for checking if string is in URDF format
   bool isURDF(std::string model_xml);
 
-  /// \brief utilites for checking incoming string URDF/SDF/Param
+  /// \brief utility for checking if string is in SDF format
   bool isSDF(std::string model_xml);
 
-  /// \brief utilites for checking incoming string URDF/SDF/Param
+  /// \brief Connect to Gazebo via its plugin interface, get a pointer to the world, start events
   void loadGazeboRosApiPlugin(std::string world_name);
+
+  // track if the desconstructor event needs to occur
+  bool plugin_loaded_;
+
+  // detect if sigint event occurs
+  bool stop_; 
+  gazebo::event::ConnectionPtr sigint_event_;
 
   std::string robot_namespace_;
 
@@ -316,7 +329,8 @@ private:
   gazebo::event::ConnectionPtr pub_model_states_event_;
   gazebo::event::ConnectionPtr load_gazebo_ros_api_plugin_event_;
 
-  ros::ServiceServer spawn_urdf_gazebo_service_;
+  ros::ServiceServer spawn_gazebo_model_service_; // DEPRECATED IN HYDRO
+  ros::ServiceServer spawn_sdf_model_service_;
   ros::ServiceServer spawn_urdf_model_service_;
   ros::ServiceServer delete_model_service_;
   ros::ServiceServer get_model_state_service_;
@@ -355,8 +369,8 @@ private:
   bool physics_reconfigure_initialized_;
   ros::ServiceClient physics_reconfigure_set_client_;
   ros::ServiceClient physics_reconfigure_get_client_;
-  boost::shared_ptr< dynamic_reconfigure::Server<gazebo::PhysicsConfig> > physics_reconfigure_srv_;
-  dynamic_reconfigure::Server<gazebo::PhysicsConfig>::CallbackType physics_reconfigure_callback_;
+  boost::shared_ptr< dynamic_reconfigure::Server<gazebo_ros::PhysicsConfig> > physics_reconfigure_srv_;
+  dynamic_reconfigure::Server<gazebo_ros::PhysicsConfig>::CallbackType physics_reconfigure_callback_;
 
   ros::Publisher     pub_clock_;
 

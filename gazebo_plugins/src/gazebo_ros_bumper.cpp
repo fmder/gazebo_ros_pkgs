@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 Open Source Robotics Foundation
+ * Copyright 2013 Open Source Robotics Foundation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,12 @@
  *
 */
 
+/*
+ * Desc: Bumper controller
+ * Author: Nate Koenig
+ * Date: 09 Sept. 2008
+ */
+
 #include <map>
 #include <string>
 
@@ -22,8 +28,8 @@
 #include <gazebo/physics/HingeJoint.hh>
 #include <gazebo/physics/Contact.hh>
 #include <gazebo/sensors/Sensor.hh>
-#include <gazebo/sdf/interface/SDF.hh>
-#include <gazebo/sdf/interface/Param.hh>
+#include <sdf/sdf.hh>
+#include <sdf/Param.hh>
 #include <gazebo/common/Exception.hh>
 #include <gazebo/sensors/SensorTypes.hh>
 #include <gazebo/math/Pose.hh>
@@ -32,7 +38,7 @@
 
 #include <tf/tf.h>
 
-#include "gazebo_plugins/gazebo_ros_bumper.h"
+#include <gazebo_plugins/gazebo_ros_bumper.h>
 
 namespace gazebo
 {
@@ -69,14 +75,14 @@ void GazeboRosBumper::Load(sensors::SensorPtr _parent, sdf::ElementPtr _sdf)
   this->robot_namespace_ = "";
   if (_sdf->HasElement("robotNamespace"))
     this->robot_namespace_ =
-      _sdf->GetElement("robotNamespace")->GetValueString() + "/";
+      _sdf->GetElement("robotNamespace")->Get<std::string>() + "/";
 
   // "publishing contact/collisions to this topic name: "
   //   << this->bumper_topic_name_ << std::endl;
   this->bumper_topic_name_ = "bumper_states";
   if (_sdf->GetElement("bumperTopicName"))
     this->bumper_topic_name_ =
-      _sdf->GetElement("bumperTopicName")->GetValueString();
+      _sdf->GetElement("bumperTopicName")->Get<std::string>();
 
   // "transform contact/collisions pose, forces to this body (link) name: "
   //   << this->frame_name_ << std::endl;
@@ -86,14 +92,13 @@ void GazeboRosBumper::Load(sensors::SensorPtr _parent, sdf::ElementPtr _sdf)
     this->frame_name_ = "world";
   }
   else
-    this->frame_name_ = _sdf->GetElement("frameName")->GetValueString();
+    this->frame_name_ = _sdf->GetElement("frameName")->Get<std::string>();
 
-  // Exit if no ROS
+  // Make sure the ROS node for Gazebo has already been initialized
   if (!ros::isInitialized())
   {
-    gzerr << "Not loading plugin since ROS hasn't been "
-          << "properly initialized.  Try starting gazebo with ros plugin:\n"
-          << "  gazebo -s libgazebo_ros_api_plugin.so\n";
+    ROS_FATAL_STREAM("A ROS node for Gazebo has not been initialized, unable to load plugin. "
+      << "Load the Gazebo system plugin 'libgazebo_ros_api_plugin.so' in the gazebo_ros package)");
     return;
   }
 
@@ -244,13 +249,13 @@ void GazeboRosBumper::OnContact()
       // Get force, torque and rotate into user specified frame.
       // frame_rot is identity if world is used (default for now)
       math::Vector3 force = frame_rot.RotateVectorReverse(math::Vector3(
-                            contact.wrench(j).body_1_force().x(),
-                            contact.wrench(j).body_1_force().y(),
-                            contact.wrench(j).body_1_force().z()));
+                              contact.wrench(j).body_1_wrench().force().x(),
+                            contact.wrench(j).body_1_wrench().force().y(),
+                            contact.wrench(j).body_1_wrench().force().z()));
       math::Vector3 torque = frame_rot.RotateVectorReverse(math::Vector3(
-                            contact.wrench(j).body_1_torque().x(),
-                            contact.wrench(j).body_1_torque().y(),
-                            contact.wrench(j).body_1_torque().z()));
+                            contact.wrench(j).body_1_wrench().torque().x(),
+                            contact.wrench(j).body_1_wrench().torque().y(),
+                            contact.wrench(j).body_1_wrench().torque().z()));
 
       // set wrenches
       geometry_msgs::Wrench wrench;

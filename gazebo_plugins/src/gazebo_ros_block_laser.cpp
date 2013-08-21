@@ -1,28 +1,23 @@
 /*
- *  Gazebo - Outdoor Multi-Robot Simulator
- *  Copyright (C) 2003
- *     Nate Koenig & Andrew Howard
+ * Copyright 2013 Open Source Robotics Foundation
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  *
- */
+*/
 /*
  * Desc: Ros Block Laser controller.
  * Author: Nathan Koenig
  * Date: 01 Feb 2007
- * SVN info: $Id: gazebo_ros_block_laser.cc 6683 2008-06-25 19:12:30Z natepak $
  */
 
 #include <algorithm>
@@ -30,23 +25,25 @@
 
 #include <gazebo_plugins/gazebo_ros_block_laser.h>
 
-#include "physics/World.hh"
-#include "physics/HingeJoint.hh"
-#include "sensors/Sensor.hh"
-#include "sdf/interface/SDF.hh"
-#include "sdf/interface/Param.hh"
-#include "common/Exception.hh"
-#include "sensors/RaySensor.hh"
-#include "sensors/SensorTypes.hh"
-#include "transport/Node.hh"
+#include <gazebo/physics/World.hh>
+#include <gazebo/physics/HingeJoint.hh>
+#include <gazebo/sensors/Sensor.hh>
+#include <sdf/sdf.hh>
+#include <sdf/Param.hh>
+#include <gazebo/common/Exception.hh>
+#include <gazebo/sensors/RaySensor.hh>
+#include <gazebo/sensors/SensorTypes.hh>
+#include <gazebo/transport/Node.hh>
 
 #include <geometry_msgs/Point32.h>
 #include <sensor_msgs/ChannelFloat32.h>
 
-#include "tf/tf.h"
+#include <tf/tf.h>
 
 namespace gazebo
 {
+// Register this plugin with the simulator
+GZ_REGISTER_SENSOR_PLUGIN(GazeboRosBlockLaser)
 
 ////////////////////////////////////////////////////////////////////////////////
 // Constructor
@@ -87,14 +84,14 @@ void GazeboRosBlockLaser::Load(sensors::SensorPtr _parent, sdf::ElementPtr _sdf)
   this->node_ = transport::NodePtr(new transport::Node());
   this->node_->Init(worldName);
 
-  this->parent_ray_sensor_ = boost::shared_dynamic_cast<sensors::RaySensor>(this->parent_sensor_);
+  this->parent_ray_sensor_ = boost::dynamic_pointer_cast<sensors::RaySensor>(this->parent_sensor_);
 
   if (!this->parent_ray_sensor_)
     gzthrow("GazeboRosBlockLaser controller requires a Ray Sensor as its parent");
 
   this->robot_namespace_ = "";
   if (_sdf->HasElement("robotNamespace"))
-    this->robot_namespace_ = _sdf->GetElement("robotNamespace")->GetValueString() + "/";
+    this->robot_namespace_ = _sdf->GetElement("robotNamespace")->Get<std::string>() + "/";
 
   if (!_sdf->HasElement("frameName"))
   {
@@ -102,7 +99,7 @@ void GazeboRosBlockLaser::Load(sensors::SensorPtr _parent, sdf::ElementPtr _sdf)
     this->frame_name_ = "/world";
   }
   else
-    this->frame_name_ = _sdf->GetElement("frameName")->GetValueString();
+    this->frame_name_ = _sdf->GetElement("frameName")->Get<std::string>();
 
   if (!_sdf->HasElement("topicName"))
   {
@@ -110,7 +107,7 @@ void GazeboRosBlockLaser::Load(sensors::SensorPtr _parent, sdf::ElementPtr _sdf)
     this->topic_name_ = "/world";
   }
   else
-    this->topic_name_ = _sdf->GetElement("topicName")->GetValueString();
+    this->topic_name_ = _sdf->GetElement("topicName")->Get<std::string>();
 
   if (!_sdf->HasElement("gaussianNoise"))
   {
@@ -118,7 +115,7 @@ void GazeboRosBlockLaser::Load(sensors::SensorPtr _parent, sdf::ElementPtr _sdf)
     this->gaussian_noise_ = 0;
   }
   else
-    this->gaussian_noise_ = _sdf->GetElement("gaussianNoise")->GetValueDouble();
+    this->gaussian_noise_ = _sdf->GetElement("gaussianNoise")->Get<double>();
 
   if (!_sdf->HasElement("hokuyoMinIntensity"))
   {
@@ -126,7 +123,7 @@ void GazeboRosBlockLaser::Load(sensors::SensorPtr _parent, sdf::ElementPtr _sdf)
     this->hokuyo_min_intensity_ = 101;
   }
   else
-    this->hokuyo_min_intensity_ = _sdf->GetElement("hokuyoMinIntensity")->GetValueDouble();
+    this->hokuyo_min_intensity_ = _sdf->GetElement("hokuyoMinIntensity")->Get<double>();
 
   ROS_INFO("INFO: gazebo_ros_laser plugin should set minimum intensity to %f due to cutoff in hokuyo filters." , this->hokuyo_min_intensity_);
 
@@ -136,17 +133,18 @@ void GazeboRosBlockLaser::Load(sensors::SensorPtr _parent, sdf::ElementPtr _sdf)
     this->update_rate_ = 0;
   }
   else
-    this->update_rate_ = _sdf->GetElement("updateRate")->GetValueDouble();
+    this->update_rate_ = _sdf->GetElement("updateRate")->Get<double>();
   // FIXME:  update the update_rate_
 
 
   this->laser_connect_count_ = 0;
 
+  // Make sure the ROS node for Gazebo has already been initialized
   if (!ros::isInitialized())
   {
-    int argc = 0;
-    char** argv = NULL;
-    ros::init(argc,argv,"gazebo",ros::init_options::NoSigintHandler|ros::init_options::AnonymousName);
+    ROS_FATAL_STREAM("A ROS node for Gazebo has not been initialized, unable to load plugin. "
+      << "Load the Gazebo system plugin 'libgazebo_ros_api_plugin.so' in the gazebo_ros package)");
+    return;
   }
 
   this->rosnode_ = new ros::NodeHandle(this->robot_namespace_);
@@ -328,19 +326,29 @@ void GazeboRosBlockLaser::PutLaserData(common::Time &_updateTime)
         // no noise if at max range
         geometry_msgs::Point32 point;
         point.x = (r+minRange) * cos(pAngle)*cos(yAngle);
-        point.y = (r+minRange) *             sin(yAngle);
+        point.y = -(r+minRange) * sin(yAngle);
         point.z = (r+minRange) * sin(pAngle)*cos(yAngle);
-        this->cloud_msg_.points.push_back(point);
-      }
-      else
-      {
+
+        //pAngle is rotated by yAngle:
+        point.x = (r+minRange) * cos(pAngle) * cos(yAngle);
+        point.y = -(r+minRange) * cos(pAngle) * sin(yAngle);
+        point.z = (r+minRange) * sin(pAngle);
+
+        this->cloud_msg_.points.push_back(point); 
+      } 
+      else 
+      { 
         geometry_msgs::Point32 point;
-        point.x      = (r+minRange) * cos(pAngle)*cos(yAngle) + this->GaussianKernel(0,this->gaussian_noise_) ;
-        point.y      = (r+minRange) *             sin(yAngle) + this->GaussianKernel(0,this->gaussian_noise_) ;
-        point.z      = (r+minRange) * sin(pAngle)*cos(yAngle) + this->GaussianKernel(0,this->gaussian_noise_) ;
-        this->cloud_msg_.points.push_back(point);
-      }
-      // only 1 channel
+        point.x = (r+minRange) * cos(pAngle)*cos(yAngle) + this->GaussianKernel(0,this->gaussian_noise_) ;
+        point.y = -(r+minRange) * sin(yAngle) + this->GaussianKernel(0,this->gaussian_noise_) ;
+        point.z = (r+minRange) * sin(pAngle)*cos(yAngle) + this->GaussianKernel(0,this->gaussian_noise_) ;
+        //pAngle is rotated by yAngle:
+        point.x = (r+minRange) * cos(pAngle) * cos(yAngle) + this->GaussianKernel(0,this->gaussian_noise_);
+        point.y = -(r+minRange) * cos(pAngle) * sin(yAngle) + this->GaussianKernel(0,this->gaussian_noise_);
+        point.z = (r+minRange) * sin(pAngle) + this->GaussianKernel(0,this->gaussian_noise_);
+        this->cloud_msg_.points.push_back(point); 
+      } // only 1 channel 
+
       this->cloud_msg_.channels[0].values.push_back(intensity + this->GaussianKernel(0,this->gaussian_noise_)) ;
     }
   }
@@ -392,8 +400,6 @@ void GazeboRosBlockLaser::OnStats( const boost::shared_ptr<msgs::WorldStatistics
   gzdbg << "plugin simTime [" << this->sim_time_.Double() << "] update pose [" << pose.pos.x << "]\n";
 }
 
-// Register this plugin with the simulator
-GZ_REGISTER_SENSOR_PLUGIN(GazeboRosBlockLaser)
 
 }
 

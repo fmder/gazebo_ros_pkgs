@@ -1,31 +1,24 @@
 /*
- *  Gazebo - Outdoor Multi-Robot Simulator
- *  Copyright (C) 2003
- *     Nate Koenig & Andrew Howard
+ * Copyright 2013 Open Source Robotics Foundation
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  *
- */
+*/
+
 /*
- @mainpage
    Desc: GazeboRosOpenniKinect plugin for simulating cameras in Gazebo
    Author: John Hsu
    Date: 24 Sept 2008
-   SVN info: $Id$
- @htmlinclude manifest.html
- @b GazeboRosOpenniKinect plugin broadcasts ROS Image messages
  */
 
 #include <algorithm>
@@ -35,17 +28,19 @@
 
 #include <gazebo_plugins/gazebo_ros_openni_kinect.h>
 
-#include "sensors/Sensor.hh"
-#include "sdf/interface/SDF.hh"
-#include "sensors/SensorTypes.hh"
+#include <gazebo/sensors/Sensor.hh>
+#include <sdf/sdf.hh>
+#include <gazebo/sensors/SensorTypes.hh>
 
 // for creating PointCloud2 from pcl point cloud
-#include "pcl/ros/conversions.h"
+#include <pcl_conversions/pcl_conversions.h>
 
-#include "tf/tf.h"
+#include <tf/tf.h>
 
 namespace gazebo
 {
+// Register this plugin with the simulator
+GZ_REGISTER_SENSOR_PLUGIN(GazeboRosOpenniKinect)
 
 ////////////////////////////////////////////////////////////////////////////////
 // Constructor
@@ -76,8 +71,6 @@ void GazeboRosOpenniKinect::Load(sensors::SensorPtr _parent, sdf::ElementPtr _sd
   this->format_ = this->format;
   this->camera_ = this->depthCamera;
 
-  GazeboRosCameraUtils::Load(_parent, _sdf);
-
   // using a different default
   if (!_sdf->GetElement("imageTopicName"))
     this->image_topic_name_ = "ir/image_raw";
@@ -88,24 +81,30 @@ void GazeboRosOpenniKinect::Load(sensors::SensorPtr _parent, sdf::ElementPtr _sd
   if (!_sdf->GetElement("pointCloudTopicName"))
     this->point_cloud_topic_name_ = "points";
   else
-    this->point_cloud_topic_name_ = _sdf->GetElement("pointCloudTopicName")->GetValueString();
+    this->point_cloud_topic_name_ = _sdf->GetElement("pointCloudTopicName")->Get<std::string>();
 
   // depth image stuff
   if (!_sdf->GetElement("depthImageTopicName"))
     this->depth_image_topic_name_ = "depth/image_raw";
   else
-    this->depth_image_topic_name_ = _sdf->GetElement("depthImageTopicName")->GetValueString();
+    this->depth_image_topic_name_ = _sdf->GetElement("depthImageTopicName")->Get<std::string>();
 
   if (!_sdf->GetElement("depthImageCameraInfoTopicName"))
     this->depth_image_camera_info_topic_name_ = "depth/camera_info";
   else
-    this->depth_image_camera_info_topic_name_ = _sdf->GetElement("depthImageCameraInfoTopicName")->GetValueString();
+    this->depth_image_camera_info_topic_name_ = _sdf->GetElement("depthImageCameraInfoTopicName")->Get<std::string>();
 
   if (!_sdf->GetElement("pointCloudCutoff"))
     this->point_cloud_cutoff_ = 0.4;
   else
-    this->point_cloud_cutoff_ = _sdf->GetElement("pointCloudCutoff")->GetValueDouble();
+    this->point_cloud_cutoff_ = _sdf->GetElement("pointCloudCutoff")->Get<double>();
 
+  load_connection_ = GazeboRosCameraUtils::OnLoad(boost::bind(&GazeboRosOpenniKinect::Advertise, this));
+  GazeboRosCameraUtils::Load(_parent, _sdf);
+}
+
+void GazeboRosOpenniKinect::Advertise()
+{
   ros::AdvertiseOptions point_cloud_ao = 
     ros::AdvertiseOptions::create<sensor_msgs::PointCloud2 >(
       this->point_cloud_topic_name_,1,
@@ -182,6 +181,9 @@ void GazeboRosOpenniKinect::OnNewDepthFrame(const float *_image,
     unsigned int _width, unsigned int _height, unsigned int _depth, 
     const std::string &_format)
 {
+  if (!this->initialized_ || this->height_ <=0 || this->width_ <=0)
+    return;
+
   this->depth_sensor_update_time_ = this->parentSensor->GetLastUpdateTime();
   if (this->parentSensor->IsActive())
   {
@@ -207,6 +209,7 @@ void GazeboRosOpenniKinect::OnNewDepthFrame(const float *_image,
       // do this first so there's chance for sensor to run 1 frame after activate
       this->parentSensor->SetActive(true);
   }
+  PublishCameraInfo();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -215,6 +218,9 @@ void GazeboRosOpenniKinect::OnNewImageFrame(const unsigned char *_image,
     unsigned int _width, unsigned int _height, unsigned int _depth, 
     const std::string &_format)
 {
+  if (!this->initialized_ || this->height_ <=0 || this->width_ <=0)
+    return;
+
   //ROS_ERROR("camera_ new frame %s %s",this->parentSensor_->GetName().c_str(),this->frame_name_.c_str());
   this->sensor_update_time_ = this->parentSensor_->GetLastUpdateTime();
 
@@ -365,7 +371,8 @@ bool GazeboRosOpenniKinect::FillPointCloudHelper(
     }
   }
 
-  point_cloud.header = point_cloud_msg.header;
+  point_cloud.header = pcl_conversions::toPCL(point_cloud_msg.header);
+
   pcl::toROSMsg(point_cloud, point_cloud_msg);
   return true;
 }
@@ -455,8 +462,5 @@ void GazeboRosDepthCamera::PublishDisparityImage(const DepthImage& depth, ros::T
   pub_disparity_.publish (disp_msg);
 }
 */
-
-// Register this plugin with the simulator
-GZ_REGISTER_SENSOR_PLUGIN(GazeboRosOpenniKinect)
 
 }

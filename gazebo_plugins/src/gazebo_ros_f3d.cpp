@@ -1,39 +1,32 @@
 /*
- *  Gazebo - Outdoor Multi-Robot Simulator
- *  Copyright (C) 2003
- *     Nate Koenig & Andrew Howard
+ * Copyright 2013 Open Source Robotics Foundation
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  *
- */
+*/
+
 /*
- @mainpage
    Desc: Force Feed Back Ground Truth
    Author: Sachin Chitta and John Hsu
    Date: 1 June 2008
-   SVN info: $Id$
- @htmlinclude manifest.html
- @b GazeboRosF3D plugin broadcasts forces acting on the body specified by name.
  */
 
 #include <gazebo_plugins/gazebo_ros_f3d.h>
-
-#include "tf/tf.h"
+#include <tf/tf.h>
 
 namespace gazebo
 {
+GZ_REGISTER_MODEL_PLUGIN(GazeboRosF3D);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Constructor
@@ -65,7 +58,7 @@ void GazeboRosF3D::Load( physics::ModelPtr _parent, sdf::ElementPtr _sdf )
   // load parameters
   this->robot_namespace_ = "";
   if (_sdf->HasElement("robotNamespace"))
-    this->robot_namespace_ = _sdf->GetElement("robotNamespace")->GetValueString() + "/";
+    this->robot_namespace_ = _sdf->GetElement("robotNamespace")->Get<std::string>() + "/";
 
   if (!_sdf->HasElement("bodyName"))
   {
@@ -73,7 +66,7 @@ void GazeboRosF3D::Load( physics::ModelPtr _parent, sdf::ElementPtr _sdf )
     return;
   }
   else
-    this->link_name_ = _sdf->GetElement("bodyName")->GetValueString();
+    this->link_name_ = _sdf->GetElement("bodyName")->Get<std::string>();
 
   this->link_ = _parent->GetLink(this->link_name_);
   if (!this->link_)
@@ -88,7 +81,7 @@ void GazeboRosF3D::Load( physics::ModelPtr _parent, sdf::ElementPtr _sdf )
     return;
   }
   else
-    this->topic_name_ = _sdf->GetElement("topicName")->GetValueString();
+    this->topic_name_ = _sdf->GetElement("topicName")->Get<std::string>();
 
   if (!_sdf->HasElement("frameName"))
   {
@@ -97,16 +90,18 @@ void GazeboRosF3D::Load( physics::ModelPtr _parent, sdf::ElementPtr _sdf )
   }
   else
   {
-    this->frame_name_ = _sdf->GetElement("frameName")->GetValueString();
+    this->frame_name_ = _sdf->GetElement("frameName")->Get<std::string>();
     // todo: frameName not used
     ROS_INFO("f3d plugin specifies <frameName> [%s], not used, default to world",this->frame_name_.c_str());
   }
   
+
+  // Make sure the ROS node for Gazebo has already been initialized
   if (!ros::isInitialized())
   {
-    int argc = 0;
-    char** argv = NULL;
-    ros::init(argc,argv,"gazebo",ros::init_options::NoSigintHandler|ros::init_options::AnonymousName);
+    ROS_FATAL_STREAM("A ROS node for Gazebo has not been initialized, unable to load plugin. "
+      << "Load the Gazebo system plugin 'libgazebo_ros_api_plugin.so' in the gazebo_ros package)");
+    return;
   }
 
   this->rosnode_ = new ros::NodeHandle(this->robot_namespace_);
@@ -193,7 +188,5 @@ void GazeboRosF3D::QueueThread()
     this->queue_.callAvailable(ros::WallDuration(timeout));
   }
 }
-
-GZ_REGISTER_MODEL_PLUGIN(GazeboRosF3D);
 
 }
